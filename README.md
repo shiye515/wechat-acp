@@ -4,7 +4,7 @@ Bridge WeChat direct messages to any ACP-compatible AI agent.
 
 `wechat-acp` logs in with the WeChat iLink bot API, polls incoming 1:1 messages, forwards them to an ACP agent over stdio, and sends the agent reply back to WeChat.
 
-![wechat-acp screenshot](./resources/screenshot.jpg)
+<img src="./resources/screenshot.jpg" alt="wechat-acp screenshot" width="400" />
 
 ## Features
 
