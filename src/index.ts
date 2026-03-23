@@ -3,5 +3,16 @@
  */
 
 export { WeChatAcpBridge } from "./bridge.js";
-export type { WeChatAcpConfig } from "./config.js";
-export { defaultConfig, parseAgentCommand } from "./config.js";
+export type {
+	AgentCommandConfig,
+	AgentPreset,
+	ResolvedAgentConfig,
+	WeChatAcpConfig,
+} from "./config.js";
+export {
+	BUILT_IN_AGENTS,
+	defaultConfig,
+	listBuiltInAgents,
+	parseAgentCommand,
+	resolveAgentSelection,
+} from "./config.js";

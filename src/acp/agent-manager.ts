@@ -5,6 +5,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { Writable, Readable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
+import packageJson from "../../package.json" with { type: "json" };
 import type { WeChatAcpClient } from "./client.js";
 
 export interface AgentProcessInfo {
@@ -58,6 +59,11 @@ export async function spawnAgent(params: {
   log("Initializing ACP connection...");
   const initResult = await connection.initialize({
     protocolVersion: acp.PROTOCOL_VERSION,
+    clientInfo: {
+      name: packageJson.name,
+      title: packageJson.name,
+      version: packageJson.version,
+    },
     clientCapabilities: {
       fs: {
         readTextFile: true,

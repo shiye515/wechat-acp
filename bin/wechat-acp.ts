@@ -17,21 +17,31 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import qrcodeTerminal from "qrcode-terminal";
 import { WeChatAcpBridge } from "../src/bridge.js";
-import { defaultConfig, parseAgentCommand } from "../src/config.js";
+import {
+  defaultConfig,
+  listBuiltInAgents,
+  resolveAgentSelection,
+} from "../src/config.js";
 import type { WeChatAcpConfig } from "../src/config.js";
 
 function usage(): void {
+  const presets = listBuiltInAgents()
+    .map(({ id }) => id)
+    .join(", ");
+
   console.log(`
 wechat-acp — Bridge WeChat to any ACP-compatible AI agent
 
 Usage:
-  wechat-acp --agent <command>  [options]
+  wechat-acp --agent <preset|command>  [options]
+  wechat-acp agents                        List built-in agent presets
   wechat-acp stop                          Stop a running daemon
   wechat-acp status                        Check daemon status
 
 Options:
-  --agent <cmd>       Agent command (required)
-                      Examples: "claude code", "gemini", "npx tsx ./agent.ts"
+  --agent <value>     Built-in preset name or raw agent command
+                      Presets: ${presets}
+                      Examples: "copilot", "claude", "npx tsx ./agent.ts"
   --cwd <dir>         Working directory for agent (default: current dir)
   --login             Force re-login (new QR code)
   --daemon            Run in background after login
@@ -120,6 +130,17 @@ function loadConfigFile(filePath: string): Partial<WeChatAcpConfig> {
   return JSON.parse(content) as Partial<WeChatAcpConfig>;
 }
 
+function handleAgents(config: WeChatAcpConfig): void {
+  console.log("Built-in ACP agent presets:\n");
+  for (const { id, preset } of listBuiltInAgents(config.agents)) {
+    const commandLine = [preset.command, ...preset.args].join(" ");
+    console.log(`${id.padEnd(10)} ${commandLine}`);
+    if (preset.description) {
+      console.log(`           ${preset.description}`);
+    }
+  }
+}
+
 function handleStop(config: WeChatAcpConfig): void {
   const pidFile = config.daemon.pidFile;
   if (!fs.existsSync(pidFile)) {
@@ -206,12 +227,17 @@ async function main(): Promise<void> {
     const fileConfig = loadConfigFile(args.configFile);
     Object.assign(config.wechat, fileConfig.wechat ?? {});
     Object.assign(config.agent, fileConfig.agent ?? {});
+    Object.assign(config.agents, fileConfig.agents ?? {});
     Object.assign(config.session, fileConfig.session ?? {});
     Object.assign(config.daemon, fileConfig.daemon ?? {});
     Object.assign(config.storage, fileConfig.storage ?? {});
   }
 
   // Handle subcommands
+  if (args.command === "agents") {
+    handleAgents(config);
+    return;
+  }
   if (args.command === "stop") {
     handleStop(config);
     return;
@@ -221,17 +247,24 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Require --agent
-  if (!args.agent) {
+  const agentSelection = args.agent ?? config.agent.preset;
+
+  // Require preset or raw command
+  if (!agentSelection && !config.agent.command) {
     console.error("Error: --agent is required\n");
     usage();
     process.exit(1);
   }
 
-  // Parse agent command
-  const { command, args: agentArgs } = parseAgentCommand(args.agent);
-  config.agent.command = command;
-  config.agent.args = agentArgs;
+  if (agentSelection) {
+    const resolvedAgent = resolveAgentSelection(agentSelection, config.agents);
+    config.agent.preset = resolvedAgent.id;
+    config.agent.command = resolvedAgent.command;
+    config.agent.args = resolvedAgent.args;
+    if (resolvedAgent.env) {
+      config.agent.env = { ...(config.agent.env ?? {}), ...resolvedAgent.env };
+    }
+  }
 
   if (args.cwd) config.agent.cwd = path.resolve(args.cwd);
   if (args.idleTimeout) config.session.idleTimeoutMs = args.idleTimeout * 60_000;
