@@ -33,6 +33,7 @@ export interface SessionManagerOpts {
   agentEnv?: Record<string, string>;
   idleTimeoutMs: number;
   maxConcurrentUsers: number;
+  showThoughts: boolean;
   log: (msg: string) => void;
   onReply: (userId: string, contextToken: string, text: string) => Promise<void>;
   sendTyping: (userId: string, contextToken: string) => Promise<void>;
@@ -108,7 +109,9 @@ export class SessionManager {
 
     const client = new WeChatAcpClient({
       sendTyping: () => this.opts.sendTyping(userId, contextToken),
+      onThoughtFlush: (text) => this.opts.onReply(userId, contextToken, text),
       log: (msg) => this.opts.log(`[${userId}] ${msg}`),
+      showThoughts: this.opts.showThoughts,
     });
 
     const agentInfo = await spawnAgent({
@@ -147,12 +150,13 @@ export class SessionManager {
         const pending = session.queue.shift()!;
 
         // Keep the ACP client instance stable because the connection is bound to it.
-        session.client.updateSendTyping(() =>
-          this.opts.sendTyping(session.userId, pending.contextToken),
-        );
+        session.client.updateCallbacks({
+          sendTyping: () => this.opts.sendTyping(session.userId, pending.contextToken),
+          onThoughtFlush: (text) => this.opts.onReply(session.userId, pending.contextToken, text),
+        });
 
         // Reset chunks for the new turn
-        session.client.flush();
+        await session.client.flush();
 
         try {
           // Send typing immediately so user knows the prompt was received
@@ -166,7 +170,7 @@ export class SessionManager {
           });
 
           // Collect accumulated text
-          let replyText = session.client.flush();
+          let replyText = await session.client.flush();
 
           if (result.stopReason === "cancelled") {
             replyText += "\n[cancelled]";

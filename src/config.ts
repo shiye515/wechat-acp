@@ -73,6 +73,7 @@ export interface WeChatAcpConfig {
     args: string[];
     cwd: string;
     env?: Record<string, string>;
+    showThoughts: boolean;
   };
   agents: Record<string, AgentPreset>;
   session: {
@@ -106,6 +107,7 @@ export function defaultConfig(): WeChatAcpConfig {
       command: "",
       args: [],
       cwd: process.cwd(),
+      showThoughts: false,
     },
     agents: { ...BUILT_IN_AGENTS },
     session: {

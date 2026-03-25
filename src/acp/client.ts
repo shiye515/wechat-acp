@@ -11,11 +11,14 @@ import type * as acp from "@agentclientprotocol/sdk";
 
 export interface WeChatAcpClientOpts {
   sendTyping: () => Promise<void>;
+  onThoughtFlush: (text: string) => Promise<void>;
   log: (msg: string) => void;
+  showThoughts: boolean;
 }
 
 export class WeChatAcpClient implements acp.Client {
   private chunks: string[] = [];
+  private thoughtChunks: string[] = [];
   private opts: WeChatAcpClientOpts;
   private lastTypingAt = 0;
   private static readonly TYPING_INTERVAL_MS = 5_000;
@@ -24,10 +27,11 @@ export class WeChatAcpClient implements acp.Client {
     this.opts = opts;
   }
 
-  updateSendTyping(sendTyping: () => Promise<void>): void {
+  updateCallbacks(callbacks: { sendTyping: () => Promise<void>; onThoughtFlush: (text: string) => Promise<void> }): void {
     this.opts = {
       ...this.opts,
-      sendTyping,
+      sendTyping: callbacks.sendTyping,
+      onThoughtFlush: callbacks.onThoughtFlush,
     };
   }
 
@@ -55,6 +59,7 @@ export class WeChatAcpClient implements acp.Client {
 
     switch (update.sessionUpdate) {
       case "agent_message_chunk":
+        await this.maybeFlushThoughts();
         if (update.content.type === "text") {
           this.chunks.push(update.content.text);
         }
@@ -63,7 +68,19 @@ export class WeChatAcpClient implements acp.Client {
         break;
 
       case "tool_call":
+        await this.maybeFlushThoughts();
         this.opts.log(`[tool] ${update.title} (${update.status})`);
+        await this.maybeSendTyping();
+        break;
+
+      case "agent_thought_chunk":
+        if (update.content.type === "text") {
+          const text = update.content.text;
+          this.opts.log(`[thought] ${text.length > 80 ? text.substring(0, 80) + "..." : text}`);
+          if (this.opts.showThoughts) {
+            this.thoughtChunks.push(text);
+          }
+        }
         await this.maybeSendTyping();
         break;
 
@@ -119,12 +136,26 @@ export class WeChatAcpClient implements acp.Client {
     }
   }
 
-  /** Get accumulated text and reset the buffer. */
-  flush(): string {
+  /** Get accumulated text and reset the buffer. Also flushes any remaining thoughts. */
+  async flush(): Promise<string> {
+    await this.maybeFlushThoughts();
     const text = this.chunks.join("");
     this.chunks = [];
     this.lastTypingAt = 0;
     return text;
+  }
+
+  private async maybeFlushThoughts(): Promise<void> {
+    if (this.thoughtChunks.length === 0) return;
+    const thoughtText = this.thoughtChunks.join("");
+    this.thoughtChunks = [];
+    if (thoughtText.trim()) {
+      try {
+        await this.opts.onThoughtFlush(`💭 [Thinking]\n${thoughtText}`);
+      } catch {
+        // best effort
+      }
+    }
   }
 
   private async maybeSendTyping(): Promise<void> {
