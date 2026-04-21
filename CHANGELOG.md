@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.3
+
+- Update Claude Code agent package from `@zed-industries/claude-code-acp` to `@agentclientprotocol/claude-agent-acp`
+
 ## 0.1.2
 
 - Add `--show-thoughts` flag to forward agent thinking to WeChat (off by default)
